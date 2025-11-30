@@ -9,38 +9,101 @@
     // 多种选择器尝试获取题目标题
     let problemTitle = null;
     
-    // 尝试各种可能的题目标题选择器
-    const titleSelectors = [
+    // 辅助函数：验证是否为有效的题目标题
+    function isValidProblemTitle(text) {
+      if (!text || text.length === 0 || text.length > 200) return false;
+      // 题目标题通常包含数字和点号（如 "1. Two Sum"）
+      // 或者至少包含多个单词
+      const hasNumberDot = /^\d+\.\s+/.test(text);
+      const wordCount = text.split(/\s+/).length;
+      // 排除明显是用户名的情况（通常只有一个词，且没有数字）
+      if (!hasNumberDot && wordCount < 2) return false;
+      // 排除包含@符号或邮箱的内容
+      if (text.includes('@')) return false;
+      return true;
+    }
+    
+    // 辅助函数：检查元素是否在题目区域
+    function isInProblemArea(element) {
+      // 检查是否在题目内容区域
+      const problemSelectors = [
+        '[class*="question"]',
+        '[class*="problem"]',
+        '[data-cy*="question"]',
+        'main',
+        '[role="main"]'
+      ];
+      
+      for (const selector of problemSelectors) {
+        if (element.closest(selector)) {
+          return true;
+        }
+      }
+      return false;
+    }
+    
+    // 优先使用更精确的选择器
+    const preciseSelectors = [
       '[data-cy="question-title"]',
       '[data-cy="question-title-text"]',
       'div[class*="question-title"]',
-      'h3[class*="title"]',
-      'h4[class*="title"]',
-      '.css-v3d350',
-      '.css-1j7rsvg',
-      'a[href*="/problems/"]',
-      '.text-title-large',
-      '.text-xl',
-      'h1, h2, h3'
+      'h3[data-cy*="title"]',
+      'h4[data-cy*="title"]'
     ];
     
-    for (const selector of titleSelectors) {
+    for (const selector of preciseSelectors) {
       const element = document.querySelector(selector);
       if (element) {
         const text = element.textContent?.trim();
-        if (text && text.length > 0 && text.length < 200) { // 过滤掉过长的文本
+        if (isValidProblemTitle(text)) {
           problemTitle = text;
+          console.log('[LeetCode提醒] 从精确选择器获取标题:', text);
           break;
         }
       }
     }
     
+    // 如果精确选择器没找到，尝试其他选择器但需要验证
+    if (!problemTitle) {
+      const otherSelectors = [
+        'h3[class*="title"]',
+        'h4[class*="title"]',
+        '.text-title-large',
+        'a[href*="/problems/"]'
+      ];
+      
+      for (const selector of otherSelectors) {
+        const elements = document.querySelectorAll(selector);
+        for (const element of elements) {
+          // 确保在题目区域内
+          if (!isInProblemArea(element)) continue;
+          
+          const text = element.textContent?.trim();
+          if (isValidProblemTitle(text)) {
+            // 额外验证：确保包含数字开头或符合题目标题格式
+            if (/^\d+\./.test(text) || (text.split(/\s+/).length >= 2 && text.length > 5)) {
+              problemTitle = text;
+              console.log('[LeetCode提醒] 从其他选择器获取标题:', text);
+              break;
+            }
+          }
+        }
+        if (problemTitle) break;
+      }
+    }
+    
     // 如果还是没找到，尝试从页面中查找包含题号的文本
     if (!problemTitle) {
-      const allText = document.body.innerText || '';
-      const titleMatch = allText.match(/(\d+\.\s*[^\n]+?)(?:\n|$)/);
+      // 只在题目区域查找
+      const problemArea = document.querySelector('[class*="question"], [class*="problem"], main, [role="main"]') || document.body;
+      const allText = problemArea.innerText || '';
+      const titleMatch = allText.match(/(\d+\.\s+[^\n]{3,50})(?:\n|$)/);
       if (titleMatch) {
-        problemTitle = titleMatch[1].trim();
+        const candidate = titleMatch[1].trim();
+        if (isValidProblemTitle(candidate)) {
+          problemTitle = candidate;
+          console.log('[LeetCode提醒] 从文本匹配获取标题:', candidate);
+        }
       }
     }
     
@@ -55,6 +118,7 @@
         .split('-')
         .map(word => word.charAt(0).toUpperCase() + word.slice(1))
         .join(' ');
+      console.log('[LeetCode提醒] 使用slug作为标题:', problemTitle);
     }
     
     // 尝试获取题目编号
@@ -63,11 +127,16 @@
       const numberMatch = problemTitle.match(/^(\d+)\./);
       if (numberMatch) {
         problemNumber = numberMatch[1];
+      } else if (problemSlug) {
+        // 如果标题没有编号，尝试从URL或其他地方获取
+        // 某些LeetCode URL可能包含编号
       }
     }
     
-    // 最后的fallback
+    // 最后的fallback - 如果还是没有，至少用slug
     const finalTitle = problemTitle || (problemSlug ? `${problemSlug} (LeetCode)` : 'Unknown Problem');
+    
+    console.log('[LeetCode提醒] 最终解析的题目标题:', finalTitle);
 
     return {
       title: finalTitle,
