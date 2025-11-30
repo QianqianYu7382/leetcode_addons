@@ -109,72 +109,305 @@
     return 'easy'; // 默认为easy
   }
 
-  // 监听提交成功事件
+  // 提交状态跟踪
+  let submissionInProgress = false;
+  let lastSubmissionTime = 0;
+
+  // 监听提交成功事件（事件驱动，无轮询）
   function listenForSubmission() {
-    // 方法1: 监听成功提示
-    const observer = new MutationObserver((mutations) => {
-      mutations.forEach((mutation) => {
-        mutation.addedNodes.forEach((node) => {
-          if (node.nodeType === 1) { // Element node
-            const text = node.textContent || '';
-            
-            // 检测提交成功的各种提示
-            if (
-              text.includes('Accepted') || 
-              text.includes('通过') ||
-              text.includes('Success') ||
-              (text.includes('运行成功') && text.includes('执行用时'))
-            ) {
-              handleSubmissionSuccess();
-            }
+    // 方法1: 监听提交按钮点击，跟踪提交状态
+    setupSubmitButtonListener();
 
-            // 检查是否有成功图标或状态
-            const successIndicators = node.querySelectorAll ? node.querySelectorAll(
-              '[class*="success"], [class*="accepted"], [class*="check"], [data-state="success"]'
-            ) : [];
-            if (successIndicators.length > 0) {
-              handleSubmissionSuccess();
-            }
-          }
-        });
-      });
-    });
+    // 方法2: 监听提交结果区域的DOM变化（更精确）
+    setupResultObserver();
 
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true
-    });
+    // 方法3: 监听URL变化（提交后会跳转到提交详情页）
+    setupUrlChangeListener();
 
-    // 方法2: 监听URL变化（提交后会跳转到提交详情页）
-    let lastUrl = location.href;
-    new MutationObserver(() => {
-      const url = location.href;
-      if (url !== lastUrl && url.includes('/submissions/')) {
-        setTimeout(() => {
-          if (isSubmissionAccepted()) {
-            handleSubmissionSuccess();
-          }
-        }, 1000);
-        lastUrl = url;
-      }
-    }).observe(document, { subtree: true, childList: true });
-
-    // 方法3: 定期检查页面状态（降低频率，避免过于频繁）
-    setInterval(() => {
-      if (isSubmissionAccepted()) {
-        handleSubmissionSuccess();
-      }
-    }, 5000); // 改为5秒检查一次
+    // 方法4: 拦截fetch请求（如果LeetCode使用fetch API提交）
+    interceptSubmissionRequests();
   }
 
-  function isSubmissionAccepted() {
-    const acceptedText = document.body.textContent || '';
-    return (
-      acceptedText.includes('Accepted') || 
-      acceptedText.includes('通过') ||
-      (document.querySelector('[data-state="success"]') !== null) ||
-      (document.querySelector('[class*="accepted"]') !== null)
+  // 监听提交按钮点击
+  function setupSubmitButtonListener() {
+    // 使用事件委托监听所有可能的提交按钮
+    document.addEventListener('click', (e) => {
+      const target = e.target;
+      const button = target.closest('button');
+      
+      if (!button) return;
+      
+      const buttonText = button.textContent?.toLowerCase() || '';
+      const buttonClasses = button.className?.toLowerCase() || '';
+      
+      // 检测提交按钮（Submit、提交等）
+      if (
+        buttonText.includes('submit') || 
+        buttonText.includes('提交') ||
+        buttonClasses.includes('submit') ||
+        button.getAttribute('data-cy')?.includes('submit')
+      ) {
+        console.log('[LeetCode提醒] 检测到提交按钮点击');
+        submissionInProgress = true;
+        lastSubmissionTime = Date.now();
+        
+        // 启动结果监听（提交后会在结果区域显示）
+        setTimeout(() => {
+          checkSubmissionResult();
+        }, 2000); // 2秒后开始检查结果
+      }
+    }, true); // 使用捕获阶段确保能捕获到
+  }
+
+  // 精确监听提交结果区域
+  function setupResultObserver() {
+    // 查找提交结果容器（多种可能的选择器）
+    const resultSelectors = [
+      '[class*="result"]',
+      '[class*="submission"]',
+      '[data-cy="submission-result"]',
+      '[id*="result"]',
+      '[id*="submission"]'
+    ];
+
+    let resultContainer = null;
+    
+    // 尝试找到结果容器
+    const findResultContainer = () => {
+      for (const selector of resultSelectors) {
+        const container = document.querySelector(selector);
+        if (container) {
+          resultContainer = container;
+          return container;
+        }
+      }
+      // 如果找不到，就监听整个编辑器区域或者代码执行区域
+      return document.querySelector('[class*="editor"]') || 
+             document.querySelector('[class*="code"]') ||
+             document.body;
+    };
+
+    resultContainer = findResultContainer();
+
+    // 创建精确的MutationObserver，只观察文本和属性变化
+    const observer = new MutationObserver((mutations) => {
+      if (!submissionInProgress) return; // 只在提交进行中时检查
+      
+      for (const mutation of mutations) {
+        // 检查新增的文本节点
+        if (mutation.type === 'childList') {
+          for (const node of mutation.addedNodes) {
+            if (node.nodeType === 1) { // 元素节点
+              const text = node.textContent?.trim() || '';
+              
+              // 检查是否包含Accepted或成功提示
+              if (text.match(/Accepted|通过|Success/i)) {
+                // 进一步确认是提交结果（不是其他地方的文本）
+                if (text.includes('Accepted') || text.includes('通过') || 
+                    text.includes('执行用时') || text.includes('runtime')) {
+                  console.log('[LeetCode提醒] 检测到提交成功结果');
+                  handleSubmissionSuccess();
+                  submissionInProgress = false;
+                  return;
+                }
+              }
+            } else if (node.nodeType === 3) { // 文本节点
+              const text = node.textContent?.trim() || '';
+              if (text.match(/Accepted|通过/i)) {
+                console.log('[LeetCode提醒] 检测到成功文本节点');
+                handleSubmissionSuccess();
+                submissionInProgress = false;
+                return;
+              }
+            }
+          }
+        }
+        
+        // 检查属性变化（比如data-state变为success）
+        if (mutation.type === 'attributes') {
+          const target = mutation.target;
+          if (target.getAttribute('data-state') === 'success' ||
+              target.className?.includes('accepted') ||
+              target.className?.includes('success')) {
+            console.log('[LeetCode提醒] 检测到成功状态属性');
+            handleSubmissionSuccess();
+            submissionInProgress = false;
+            return;
+          }
+        }
+      }
+    });
+
+    // 观察结果容器
+    if (resultContainer) {
+      observer.observe(resultContainer, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+        attributes: true,
+        attributeFilter: ['data-state', 'class']
+      });
+      
+      // 定期重新查找结果容器（页面可能动态加载）
+      setInterval(() => {
+        const newContainer = findResultContainer();
+        if (newContainer !== resultContainer) {
+          observer.disconnect();
+          resultContainer = newContainer;
+          if (resultContainer) {
+            observer.observe(resultContainer, {
+              childList: true,
+              subtree: true,
+              characterData: true,
+              attributes: true,
+              attributeFilter: ['data-state', 'class']
+            });
+          }
+        }
+      }, 10000); // 每10秒检查一次容器（很低的频率，仅用于适应页面结构变化）
+    } else {
+      // 如果找不到结果容器，回退到监听body（但只在提交进行中时）
+      observer.observe(document.body, {
+        childList: true,
+        subtree: true,
+        characterData: false,
+        attributes: true,
+        attributeFilter: ['data-state', 'class']
+      });
+    }
+  }
+
+  // 检查提交结果（一次性检查，非轮询）
+  function checkSubmissionResult() {
+    if (!submissionInProgress) return;
+    
+    // 查找Accepted相关的元素
+    const acceptedElements = document.querySelectorAll(
+      '[class*="accepted"], [class*="success"], [data-state="success"]'
     );
+    
+    if (acceptedElements.length > 0) {
+      // 检查文本内容确认是提交结果
+      for (const el of acceptedElements) {
+        const text = el.textContent || '';
+        if (text.includes('Accepted') || text.includes('通过')) {
+          console.log('[LeetCode提醒] 检测到提交成功元素');
+          handleSubmissionSuccess();
+          submissionInProgress = false;
+          return;
+        }
+      }
+    }
+    
+    // 如果还没找到，再等一会儿（最多等待10秒）
+    if (Date.now() - lastSubmissionTime < 10000) {
+      setTimeout(() => checkSubmissionResult(), 1000);
+    } else {
+      submissionInProgress = false;
+    }
+  }
+
+  // 监听URL变化
+  function setupUrlChangeListener() {
+    let lastUrl = location.href;
+    
+    // 使用popstate监听浏览器前进后退
+    window.addEventListener('popstate', () => {
+      if (location.href.includes('/submissions/')) {
+        checkUrlSubmission();
+      }
+    });
+    
+    // 监听pushState和replaceState（SPA路由变化）
+    const originalPushState = history.pushState;
+    const originalReplaceState = history.replaceState;
+    
+    history.pushState = function() {
+      originalPushState.apply(history, arguments);
+      if (location.href.includes('/submissions/') && location.href !== lastUrl) {
+        lastUrl = location.href;
+        setTimeout(() => checkUrlSubmission(), 1000);
+      }
+    };
+    
+    history.replaceState = function() {
+      originalReplaceState.apply(history, arguments);
+      if (location.href.includes('/submissions/') && location.href !== lastUrl) {
+        lastUrl = location.href;
+        setTimeout(() => checkUrlSubmission(), 1000);
+      }
+    };
+  }
+
+  function checkUrlSubmission() {
+    // 检查提交详情页是否显示Accepted
+    setTimeout(() => {
+      const acceptedText = document.body.textContent || '';
+      if (acceptedText.includes('Accepted') || acceptedText.includes('通过')) {
+        console.log('[LeetCode提醒] 从提交详情页检测到成功');
+        handleSubmissionSuccess();
+      }
+    }, 1500);
+  }
+
+  // 拦截网络请求（如果LeetCode使用API提交）
+  function interceptSubmissionRequests() {
+    // 拦截fetch
+    const originalFetch = window.fetch;
+    window.fetch = function(...args) {
+      const url = args[0];
+      if (typeof url === 'string' && url.includes('submit')) {
+        console.log('[LeetCode提醒] 拦截到提交请求');
+        submissionInProgress = true;
+        lastSubmissionTime = Date.now();
+        
+        return originalFetch.apply(this, args).then(response => {
+          // 克隆response以便读取
+          const clonedResponse = response.clone();
+          clonedResponse.json().then(data => {
+            if (data && (data.status_msg === 'Accepted' || data.status_msg === '通过')) {
+              console.log('[LeetCode提醒] 从API响应检测到成功');
+              handleSubmissionSuccess();
+              submissionInProgress = false;
+            }
+          }).catch(() => {}); // 忽略JSON解析错误
+          
+          return response;
+        });
+      }
+      return originalFetch.apply(this, args);
+    };
+    
+    // 拦截XMLHttpRequest
+    const originalOpen = XMLHttpRequest.prototype.open;
+    const originalSend = XMLHttpRequest.prototype.send;
+    
+    XMLHttpRequest.prototype.open = function(method, url, ...rest) {
+      this._url = url;
+      return originalOpen.apply(this, [method, url, ...rest]);
+    };
+    
+    XMLHttpRequest.prototype.send = function(...args) {
+      if (this._url && typeof this._url === 'string' && this._url.includes('submit')) {
+        console.log('[LeetCode提醒] 拦截到XHR提交请求');
+        submissionInProgress = true;
+        lastSubmissionTime = Date.now();
+        
+        this.addEventListener('load', function() {
+          try {
+            const response = JSON.parse(this.responseText);
+            if (response && (response.status_msg === 'Accepted' || response.status_msg === '通过')) {
+              console.log('[LeetCode提醒] 从XHR响应检测到成功');
+              handleSubmissionSuccess();
+              submissionInProgress = false;
+            }
+          } catch (e) {
+            // 忽略解析错误
+          }
+        });
+      }
+      return originalSend.apply(this, args);
+    };
   }
 
   // 防抖：避免重复触发
