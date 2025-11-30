@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LeetCode复习提醒</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      width: 400px;
+      min-height: 500px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: #f5f5f5;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 20px;
+      text-align: center;
+    }
+
+    .header h1 {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 5px;
+    }
+
+    .header .subtitle {
+      font-size: 12px;
+      opacity: 0.9;
+    }
+
+    .stats {
+      display: flex;
+      justify-content: space-around;
+      padding: 15px;
+      background: white;
+      border-bottom: 1px solid #e0e0e0;
+    }
+
+    .stat-item {
+      text-align: center;
+    }
+
+    .stat-value {
+      font-size: 24px;
+      font-weight: bold;
+      color: #667eea;
+    }
+
+    .stat-label {
+      font-size: 11px;
+      color: #666;
+      margin-top: 5px;
+    }
+
+    .tabs {
+      display: flex;
+      background: white;
+      border-bottom: 1px solid #e0e0e0;
+    }
+
+    .tab {
+      flex: 1;
+      padding: 12px;
+      text-align: center;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all 0.3s;
+      font-size: 13px;
+      color: #666;
+    }
+
+    .tab.active {
+      color: #667eea;
+      border-bottom-color: #667eea;
+      font-weight: 600;
+    }
+
+    .content {
+      padding: 15px;
+      max-height: 350px;
+      overflow-y: auto;
+    }
+
+    .problem-item {
+      background: white;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 10px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .problem-item:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 3px 6px rgba(0,0,0,0.15);
+    }
+
+    .problem-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .problem-title {
+      font-weight: 600;
+      color: #333;
+      font-size: 14px;
+      flex: 1;
+    }
+
+    .difficulty {
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .difficulty.easy {
+      background: #e8f5e9;
+      color: #2e7d32;
+    }
+
+    .difficulty.medium {
+      background: #fff3e0;
+      color: #f57c00;
+    }
+
+    .difficulty.hard {
+      background: #ffebee;
+      color: #c62828;
+    }
+
+    .problem-info {
+      font-size: 11px;
+      color: #666;
+      margin-top: 5px;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .review-badge {
+      background: #ff5722;
+      color: white;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 10px;
+      font-weight: 600;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: #999;
+    }
+
+    .empty-state-icon {
+      font-size: 48px;
+      margin-bottom: 10px;
+    }
+
+    .review-button {
+      background: #667eea;
+      color: white;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 4px;
+      font-size: 11px;
+      cursor: pointer;
+      margin-top: 8px;
+      width: 100%;
+      transition: background 0.3s;
+    }
+
+    .review-button:hover {
+      background: #5568d3;
+    }
+
+    .review-button:active {
+      transform: scale(0.98);
+    }
+
+    .next-review-date {
+      color: #ff5722;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>LeetCode复习提醒</h1>
+    <div class="subtitle">基于艾宾浩斯遗忘曲线</div>
+  </div>
+
+  <div class="stats">
+    <div class="stat-item">
+      <div class="stat-value" id="totalProblems">0</div>
+      <div class="stat-label">总题目</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-value" id="dueReviews">0</div>
+      <div class="stat-label">待复习</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-value" id="reviewCount">0</div>
+      <div class="stat-label">已复习</div>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" data-tab="due">待复习</div>
+    <div class="tab" data-tab="all">全部题目</div>
+  </div>
+
+  <div class="content" id="content">
+    <div class="empty-state">
+      <div class="empty-state-icon">📚</div>
+      <div>暂无数据</div>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
+
+
