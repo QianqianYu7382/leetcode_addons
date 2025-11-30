@@ -189,6 +189,36 @@
       transform: scale(0.98);
     }
 
+    .master-button {
+      background: #4CAF50;
+      color: white;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 4px;
+      font-size: 11px;
+      cursor: pointer;
+      margin-top: 8px;
+      width: 100%;
+      transition: background 0.3s;
+    }
+
+    .master-button:hover {
+      background: #45a049;
+    }
+
+    .master-button:active {
+      transform: scale(0.98);
+    }
+
+    .mastered-badge {
+      background: #4CAF50;
+      color: white;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 10px;
+      font-weight: 600;
+    }
+
     .next-review-date {
       color: #ff5722;
       font-weight: 600;
@@ -219,6 +249,7 @@
   <div class="tabs">
     <div class="tab active" data-tab="due">待复习</div>
     <div class="tab" data-tab="all">全部题目</div>
+    <div class="tab" data-tab="mastered">完全掌握</div>
   </div>
 
   <div class="content" id="content">

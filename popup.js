@@ -74,7 +74,8 @@ async function renderProblems(tab = 'due') {
   }
 
   // 更新统计
-  const dueProblems = problemsArray.filter(p => checkReviewDue(p));
+  const dueProblems = problemsArray.filter(p => !p.mastered && checkReviewDue(p));
+  const masteredProblems = problemsArray.filter(p => p.mastered);
   const totalReviewCount = problemsArray.reduce((sum, p) => sum + (p.reviewCount || 0), 0);
   
   document.getElementById('totalProblems').textContent = problemsArray.length;
@@ -85,14 +86,25 @@ async function renderProblems(tab = 'due') {
   let filteredProblems = problemsArray;
   if (tab === 'due') {
     filteredProblems = dueProblems;
+  } else if (tab === 'mastered') {
+    filteredProblems = masteredProblems;
+  } else if (tab === 'all') {
+    // 全部题目包含所有题目
+    filteredProblems = problemsArray;
   }
 
-  // 排序：待复习的按日期排序，全部题目按最后解决日期排序
+  // 排序：待复习的按日期排序，完全掌握的按掌握日期排序，全部题目按最后解决日期排序
   if (tab === 'due') {
     filteredProblems.sort((a, b) => {
       const dateA = new Date(getNextReviewDate(a.firstSolved, a.reviewCount));
       const dateB = new Date(getNextReviewDate(b.firstSolved, b.reviewCount));
       return dateA - dateB;
+    });
+  } else if (tab === 'mastered') {
+    filteredProblems.sort((a, b) => {
+      const dateA = new Date(a.masteredDate || a.lastSolved);
+      const dateB = new Date(b.masteredDate || b.lastSolved);
+      return dateB - dateA; // 最近掌握的在前
     });
   } else {
     filteredProblems.sort((a, b) => {
@@ -103,10 +115,19 @@ async function renderProblems(tab = 'due') {
   }
 
   if (filteredProblems.length === 0) {
+    let emptyMessage = '暂无题目';
+    let emptyIcon = '📚';
+    if (tab === 'due') {
+      emptyMessage = '太棒了！没有待复习的题目';
+      emptyIcon = '✅';
+    } else if (tab === 'mastered') {
+      emptyMessage = '还没有完全掌握的题目';
+      emptyIcon = '🎯';
+    }
     content.innerHTML = `
       <div class="empty-state">
-        <div class="empty-state-icon">✅</div>
-        <div>${tab === 'due' ? '太棒了！没有待复习的题目' : '暂无题目'}</div>
+        <div class="empty-state-icon">${emptyIcon}</div>
+        <div>${emptyMessage}</div>
       </div>
     `;
     return;
@@ -127,19 +148,31 @@ async function renderProblems(tab = 'due') {
           <div>
             <div>首次解决: ${problem.firstSolved}</div>
             <div>最后解决: ${problem.lastSolved}</div>
+            ${tab === 'all' && problem.totalSolvedCount ? `<div style="color: #667eea; font-weight: 600;">总共做了 <strong>${problem.totalSolvedCount}</strong> 次</div>` : ''}
             ${problem.reviewCount > 0 ? `<div>已复习 ${problem.reviewCount} 次</div>` : ''}
+            ${problem.mastered && problem.masteredDate ? `<div style="color: #4CAF50; font-weight: 600;">完全掌握于: ${problem.masteredDate}</div>` : ''}
           </div>
         </div>
-        ${isDue ? `
+        ${problem.mastered ? `
+          <div style="margin-top: 8px;">
+            <span class="mastered-badge">✓ 已完全掌握</span>
+          </div>
+        ` : isDue ? `
           <div style="margin-top: 8px;">
             <span class="review-badge">需要复习</span>
             <button class="review-button" data-action="review" data-key="${problem.key}">
               标记为已复习
             </button>
+            <button class="master-button" data-action="master" data-key="${problem.key}" style="margin-top: 6px;">
+              标记为完全掌握
+            </button>
           </div>
         ` : `
           <div style="margin-top: 8px; font-size: 11px; color: #666;">
             下次复习: <span class="next-review-date">${formatDate(nextReviewDate)}</span>
+            <button class="master-button" data-action="master" data-key="${problem.key}" style="margin-top: 6px;">
+              标记为完全掌握
+            </button>
           </div>
         `}
       </div>
@@ -152,6 +185,16 @@ async function renderProblems(tab = 'due') {
       e.stopPropagation();
       const key = button.getAttribute('data-key');
       await markAsReviewed(key);
+      renderProblems(tab);
+    });
+  });
+
+  // 添加完全掌握按钮事件监听
+  content.querySelectorAll('[data-action="master"]').forEach(button => {
+    button.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const key = button.getAttribute('data-key');
+      await markAsMastered(key);
       renderProblems(tab);
     });
   });
@@ -175,6 +218,18 @@ async function markAsReviewed(problemKey) {
   return new Promise((resolve) => {
     chrome.runtime.sendMessage({
       type: 'MARK_REVIEWED',
+      problemKey
+    }, (response) => {
+      resolve(response);
+    });
+  });
+}
+
+async function markAsMastered(problemKey) {
+  // 通知background脚本
+  return new Promise((resolve) => {
+    chrome.runtime.sendMessage({
+      type: 'MARK_MASTERED',
       problemKey
     }, (response) => {
       resolve(response);

@@ -582,7 +582,8 @@
         firstSolved: today,
         lastSolved: today,
         reviewDates: [],
-        reviewCount: 0
+        reviewCount: 0,
+        totalSolvedCount: 1 // 总共做了1次
       };
     } else {
       // 更新最后解决日期
@@ -590,6 +591,12 @@
       // 如果今天是第一次解决，更新firstSolved
       if (!problems[problemKey].firstSolved) {
         problems[problemKey].firstSolved = today;
+      }
+      // 增加总解决次数
+      if (!problems[problemKey].totalSolvedCount) {
+        problems[problemKey].totalSolvedCount = 1;
+      } else {
+        problems[problemKey].totalSolvedCount += 1;
       }
       // 更新题目信息（可能在另一个页面解决）
       problems[problemKey] = {
